@@ -1,0 +1,15 @@
+parameters:
+  - name: working_directory
+    type: string
+    default: ./src
+  - name: technologies
+    type: object
+    default: {}
+
+stages:
+  - template: generator.yml
+    parameters:
+      environments:
+        - test
+        - prod
+      technologies: ${{ parameters.technologies }}

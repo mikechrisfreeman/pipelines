@@ -1,0 +1,19 @@
+parameters:
+  - name: environment
+    type: object
+  - name: technology
+    type: object
+  - name: job_parameters
+    type: object
+    
+jobs:
+  - job: ${{ parameters.environment.name }}_appservice_deploy
+    pool:
+      vmImage: windows-2019
+    variables:
+      environment_name: ${{parameters.environment.name}}
+    steps:
+      - pwsh: |
+          Write-Host "testing"
+        enabled: true
+        displayName: powershell step

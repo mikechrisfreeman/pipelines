@@ -1,0 +1,71 @@
+parameters:
+  - name: environment
+    type: object
+  - name: technology
+    type: object
+  - name: job_parameters
+    type: object
+  - name: terraform_version
+    type: string
+    default: 1.1.6
+
+jobs:
+  - job: ${{ parameters.environment.name }}_terraform_plan
+    pool:
+      vmImage: ubuntu-latest
+    variables:
+      environment_name: ${{parameters.environment.name}}
+      state_file_name: "${{ parameters.environment.name }}_$(System.DefinitionId).tfstate"
+      plan_file_name: "${{ parameters.environment.name }}_$(Build.BuildId)_tfplan.out"
+      src_directory: ${{ parameters.job_parameters.src_directory }}
+      working_directory: "$(System.DefaultWorkingDirectory)${{ parameters.job_parameters.src_directory }}"
+      terraform_version: "${{ coalesce(parameters.job_parameters.terraform_version, parameters.terraform_version)}}"
+    steps:
+
+      - template: terraform_install.yml
+        parameters:
+          terraform_version: $(terraform_version)
+      
+      - template: terraform_auth.yml
+        parameters:
+          environment: ${{parameters.environment}}
+
+      - template: terraform_init.yml
+        parameters:
+          environment: ${{parameters.environment}}
+          src_directory: $(src_directory)
+          state_file_name: $(state_file_name)
+      
+      # It would be better to create a tfvars file here. 
+      - task: qetza.replacetokens.replacetokens-task.replacetokens@3
+        displayName: 'Replace tokens'
+        inputs:
+          targetFiles: |
+            **/variables.tf
+      
+      - task: Bash@3
+        displayName: Terraform plan
+        env:
+          ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+          ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+          ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+          ARM_TENANT_ID: $(ARM_TENANT_ID)
+        inputs:
+          workingDirectory: $(working_directory)
+          addSpnToEnvironment: true
+          targetType: 'inline'
+          script: |
+            terraform plan -out=$(plan_file_name) -input=false   
+
+      - task: ArchiveFiles@2
+        displayName: 'Create Plan Artifact'
+        inputs:
+          rootFolderOrFile: $(working_directory)
+          includeRootFolder: false
+          archiveType: 'tar'
+          tarCompression: 'gz'
+          archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildNumber).tgz'
+          replaceExistingArchive: true   
+      
+      - publish: '$(Build.ArtifactStagingDirectory)'
+        artifact: "$(environment_name)_plan"

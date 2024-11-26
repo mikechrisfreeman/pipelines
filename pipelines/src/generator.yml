@@ -1,0 +1,84 @@
+parameters:
+  - name: technologies
+    type: object
+    default: {}
+  - name: environments
+    type: object
+    default: []
+  - name: empty_array
+    type: object
+    default: []
+  - name: all_technologies
+    type: object
+    default:
+      terraform:  
+        name: terraform      
+        plan_template: technologies/terraform/terraform_plan.yml
+        deploy_template: technologies/terraform/terraform_apply.yml
+      appservice:
+        name: appservice
+        plan_template: 
+        deploy_template: technologies/appservice/appservice_deploy.yml
+      test:
+        name: test
+        plan_template: 
+        deploy_template: technologies/test/test_deploy.yml
+  - name: all_environments
+    type: object
+    default:
+      test:
+        depends_on:
+        name: test
+        subscription_name: test
+        service_connections:
+          azure_contributor: 'taxually.com Azure Development subscription'
+        backend:
+          resource_group_name: test-terraform-rg
+          storage_account_name: "taxuallytestterraform"
+          container_name: testtfstate
+        variables:
+          - group: test - environment secrets
+      prod:
+        depends_on: test
+        name: prod
+        subscription_name: prod
+        service_connections:
+          azure_contributor: 'taxually.com Azure Development subscription'
+        backend:
+          resource_group_name: test-terraform-rg
+          storage_account_name: "taxuallytestterraform"
+          container_name: testtfstate
+        variables:
+          - group: prod - environment secrets
+
+stages:
+  - ${{ each environment in parameters.environments }}:
+    - ${{ if ne(parameters.all_environments[environment], variables.null) }}:
+      - stage: ${{ parameters.all_environments[environment].name }}_plan
+        variables:
+          ${{ parameters.all_environments[environment].variables }}
+        dependsOn: []
+        jobs:
+        - ${{ each technology in parameters.technologies }}:
+          - ${{ if and(ne(parameters.all_technologies[technology.key], variables.null),ne(parameters.all_technologies[technology.key].plan_template, variables.null)) }}:
+            - template: ${{ parameters.all_technologies[technology.key].plan_template }}
+              parameters:
+                environment: ${{ parameters.all_environments[environment] }} 
+                technology: ${{ parameters.all_technologies[technology.key] }}
+                job_parameters: ${{ technology.value.parameters }}
+    - ${{ if ne(parameters.all_environments[environment], variables.null) }}:
+      - stage: ${{ parameters.all_environments[environment].name }}_deploy
+        variables:
+          ${{ parameters.all_environments[environment].variables }}
+        dependsOn: 
+          - ${{ parameters.all_environments[environment].name }}_plan
+          - ${{ if ne(parameters.all_environments[environment].depends_on, variables.null) }}:
+            -  ${{ parameters.all_environments[environment].depends_on }}_deploy
+        jobs:
+        - ${{ each technology in parameters.technologies }}:
+          - ${{ if and(ne(parameters.all_technologies[technology.key], variables.null),ne(parameters.all_technologies[technology.key].deploy_template, variables.null)) }}:
+            - template: ${{ parameters.all_technologies[technology.key].deploy_template }}
+              parameters:
+                environment: ${{ parameters.all_environments[environment] }}
+                technology: ${{ parameters.all_technologies[technology.key] }}
+                job_parameters: ${{ technology.value.parameters }}

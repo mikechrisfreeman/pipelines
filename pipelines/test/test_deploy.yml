@@ -1,0 +1,18 @@
+name: 1.0$(Rev:.r)
+trigger: none
+variables:
+  buildConfigurtion: 'Release'
+extends: 
+  template: ../src/deploy.yml
+  parameters:
+    working_directory: /test/terraform/
+    technologies:
+      terraform:  
+        parameters:
+          src_directory: /test/terraform/
+      appservice:
+        parameters:
+          test_param: appservice_param
+      test:
+        parameters:
+          test_param: test_param

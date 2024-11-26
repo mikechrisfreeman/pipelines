@@ -1,0 +1,55 @@
+parameters:
+  - name: environment
+    type: object
+  - name: technology
+    type: object
+  - name: job_parameters
+    type: object
+  - name: terraform_version
+    type: string
+    default: 1.1.6
+
+jobs:
+  - deployment: ${{ parameters.environment.name }}_terraform_apply
+    environment: test #TODO Need to come up with better names for our envs 
+    pool:
+      vmImage: ubuntu-latest
+    variables:
+      environment_name: ${{parameters.environment.name}}
+      plan_file_name: "${{ parameters.environment.name }}_$(Build.BuildId)_tfplan.out"
+      working_directory: "$(System.DefaultWorkingDirectory)${{ parameters.job_parameters.src_directory }}"
+      terraform_version: "${{ coalesce(parameters.job_parameters.terraform_version, parameters.terraform_version)}}"
+    
+    strategy:
+      runOnce: 
+        deploy:
+          steps:
+
+            - template: terraform_install.yml
+              parameters:
+                terraform_version: $(terraform_version)
+            
+            - template: terraform_auth.yml
+              parameters:
+                environment: ${{parameters.environment}}
+
+            - task: ExtractFiles@1
+              displayName: 'Extract Plan Artifact'
+              inputs:
+                archiveFilePatterns: '$(Pipeline.Workspace)/$(environment_name)_plan/$(Build.BuildNumber).tgz'
+                destinationFolder: '$(working_directory)'
+                cleanDestinationFolder: true      
+
+            - task: Bash@3
+              displayName: Terraform apply
+              env:
+                ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+                ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+                ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+                ARM_TENANT_ID: $(ARM_TENANT_ID)
+              inputs:
+                workingDirectory: $(working_directory)
+                addSpnToEnvironment: true
+                targetType: 'inline'
+                script: |
+                  terraform apply -auto-approve $(plan_file_name)
